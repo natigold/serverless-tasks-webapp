@@ -187,45 +187,6 @@ Resources:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
 
-  TasksTable:
-      Type: AWS::DynamoDB::Table
-      Properties:
-        AttributeDefinitions:
-          - AttributeName: "user"
-            AttributeType: "S"
-          - AttributeName: "id"
-            AttributeType: "S"
-        KeySchema:
-          - AttributeName: "user"
-            KeyType: "HASH"
-          - AttributeName: "id"
-            KeyType: "RANGE"
-        BillingMode: PAY_PER_REQUEST
-
-  CreateTaskFunction:
-      Type: AWS::Serverless::Function
-      Properties:
-        CodeUri: src/handlers/createTask
-        Handler: app.handler
-        Policies:
-          - DynamoDBCrudPolicy:
-              TableName: !Ref TasksTable
-          - SQSSendMessagePolicy:
-              QueueName: !GetAtt NewTasksQueue.QueueName
-        Environment:
-          Variables:
-            TASKS_TABLE: !Ref TasksTable
-            NEW_TASKS_QUEUE: !Ref NewTasksQueue
-        Events:
-          PostTaskFunctionApi:
-            Type: Api
-            Properties:
-              RestApiId: !Ref TasksApi
-              Path: /tasks
-              Method: POST
-              Auth:
-                Authorizer: MyLambdaTokenAuthorizer
-
 # DetectLables Lambda Function
   DetectLabelsFunction:
     Type: AWS::Serverless::Function
@@ -255,8 +216,7 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       Subscription:
-        # - Endpoint: "example@example.com"
-        - Endpoint: "natigold+sns1@amazon.com"
+        - Endpoint: "example@example.com"
           Protocol: "email"
 
   NewTasksQueue:
