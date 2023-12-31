@@ -219,8 +219,7 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       Subscription:
-        # - Endpoint: "example@example.com"
-        - Endpoint: "natigold+sns1@amazon.com"
+        - Endpoint: "example@example.com"
           Protocol: "email"
 
   NewTasksQueue:
