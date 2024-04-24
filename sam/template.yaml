@@ -14,6 +14,44 @@ Globals:
       AllowCredentials: "'*'"
 
 Resources:
+  # Create DynamoDB table
+  TasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "user"
+          AttributeType: "S"
+        - AttributeName: "id"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "user"
+          KeyType: "HASH"
+        - AttributeName: "id"
+          KeyType: "RANGE"
+      BillingMode: PAY_PER_REQUEST
+
+  # CreateTask Lambda Function
+  CreateTaskFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/handlers/createTask
+      Handler: app.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TasksTable
+      Environment:
+        Variables:
+          TASKS_TABLE: !Ref TasksTable
+      Events:
+        PostTaskFunctionApi:
+          Type: Api
+          Properties:
+            RestApiId: !Ref TasksApi
+            Path: /tasks
+            Method: POST
+            Auth:
+              Authorizer: MyLambdaTokenAuthorizer
+
   TasksApi:
     Type: AWS::Serverless::Api
     Properties:
@@ -148,6 +186,105 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+
+  TasksTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: "user"
+            AttributeType: "S"
+          - AttributeName: "id"
+            AttributeType: "S"
+        KeySchema:
+          - AttributeName: "user"
+            KeyType: "HASH"
+          - AttributeName: "id"
+            KeyType: "RANGE"
+        BillingMode: PAY_PER_REQUEST
+
+  CreateTaskFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: src/handlers/createTask
+        Handler: app.handler
+        Policies:
+          - DynamoDBCrudPolicy:
+              TableName: !Ref TasksTable
+          - SQSSendMessagePolicy:
+              QueueName: !GetAtt NewTasksQueue.QueueName
+        Environment:
+          Variables:
+            TASKS_TABLE: !Ref TasksTable
+            NEW_TASKS_QUEUE: !Ref NewTasksQueue
+        Events:
+          PostTaskFunctionApi:
+            Type: Api
+            Properties:
+              RestApiId: !Ref TasksApi
+              Path: /tasks
+              Method: POST
+              Auth:
+                Authorizer: MyLambdaTokenAuthorizer
+
+  DetectLabelsFunction:
+      Type: AWS::Serverless::Function
+      Properties:
+        CodeUri: src/handlers/detectLabels
+        Environment:
+          Variables:
+            TASKS_TABLE: !Ref TasksTable
+        Events:
+          ObjectCreatedEvent:
+            Type: S3
+            Properties:
+              Bucket: !Ref UploadsBucket
+              Events: s3:ObjectCreated:*
+        Handler: app.handler
+        Policies:
+          - DynamoDBCrudPolicy:
+              TableName: !Ref TasksTable
+          - RekognitionDetectOnlyPolicy: {}
+          - Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject*
+                Resource: !Sub "arn:aws:s3:::uploads-${AWS::StackName}-${AWS::Region}-${AWS::AccountId}*"
+        Runtime: nodejs14.x
+
+  DailyDigestTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription:
+        # - Endpoint: "example@example.com"
+        - Endpoint: "natigold+sns1@amazon.com"
+          Protocol: "email"
+
+  NewTasksQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: NewTasksQueue
+
+  DailyDigestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/handlers/dailyDigest
+      Handler: app.handler
+      Policies:
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt NewTasksQueue.QueueName
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt DailyDigestTopic.TopicName
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt NewTasksQueue.Arn
+            BatchSize: 3
+            MaximumBatchingWindowInSeconds: 300
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref DailyDigestTopic
+      Runtime: nodejs14.x
 
 Outputs:
   TasksApi:
